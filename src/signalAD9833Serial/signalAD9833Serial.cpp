@@ -112,6 +112,7 @@ void signalAD9833::start_signal(){
    Output: None 
 */
 void signalAD9833::stop_signal(){
+	begin_signal(); 
 	shiftOut(__data_pin, __clock_pin, MSBFIRST, stop_mask >> 8); 
 	digitalWrite(__clock_pin, HIGH); 
 
