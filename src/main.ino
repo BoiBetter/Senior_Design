@@ -8,12 +8,12 @@
 #define sine_data P2_5       // Use for data pin of the AD9833
 #define sine_clock P2_4      // Use for clock pin of AD9833
 #define sine_CS P1_5         // Use for chip select of AD9833
-#define remote_switch P1_3   // Use for remote switch of the microcontroller
+#define remote_switch P1_2   // Use for remote switch of the microcontroller
 
 const int sine_freq = 60;    // This controls the frequency output of the AD9833 in Hz.  
 signalAD9833 sine(sine_data, sine_clock, sine_CS, sine_freq);  // Call to create an AD9833 object  
 
-const uint16_t sample_num = 550; // Number of sample to be collected
+const uint16_t sample_num = 550;        // Number of sample to be collected. To be safe should not exceed 550 samples. 
 volatile uint16_t current_sample = 0;   // Need to be volatile so the compiler will not optimize this variable     
 uint16_t sample_write = 0; 
 const char * file_name [] = {"Data0.txt", "Data1.txt", "Data2.txt", "Data3.txt", "Data4.txt", "Data5.txt", "Data6.txt"}; // Names of datafile   
@@ -24,7 +24,7 @@ int next_file = 0;           // Use to point to the next file name
 String space = "      ";  
 String column_name = "EX1" + space + "EX2" + space + "EY1" + space + "EY2" + space + "EZ1" + space + "EZ2" + space;   
 
-const int samp_rate = 3000;   // Use to change the sampling rate of the ADC module 
+const int samp_rate = 1000;               // Use to change the sampling rate of the ADC module 
 const int timer_value = 32768/samp_rate;  // Value for TimerB  
 
 void setup()
@@ -41,23 +41,22 @@ void setup()
   delay(1000);
   
   pinMode(remote_switch,INPUT_PULLDOWN);  
-  attachInterrupt(remote_switch, turn_on, RISING);  // Pin P2_5 is used to receive external interrupt signal. Can be changed to any other digital pin.  
+  attachInterrupt(remote_switch, turn_on, RISING);  // Pin P1_2 is used to receive external interrupt signal. Can be changed to any other digital pin.  
   digitalWrite(ACTIVE_LED, LOW); 
+  sine_turn_off(); 
   suspend();         //MSP430 enters LP4
-
+    
 }
 
 void loop()
 {
   digitalWrite(ACTIVE_LED, HIGH); 
   sine_turn_on(); 
-  delay(200);  //200ms delay so the AD9833 output can stabilize
+  delay(1000);  //1s delay so the AD9833 output can stabilize
   timer_setup(); 
   ADC_setup(); 
-  while(current_sample < sample_num){}
-  //write_data();
-  timer_stop(); 
-  write_data(); 
+  write_data();
+  timer_stop();  
   sine_turn_off(); 
    
   attachInterrupt(remote_switch, turn_on, RISING);
@@ -95,11 +94,14 @@ void write_data()
 {
   File dataFile = SD.open(file_name[next_file], FILE_WRITE);
   dataFile.println(column_name); 
-
+  
+  // Check if we have written all data samples
   while ( current_sample < sample_num | sample_write < current_sample)
   {
+    // Check if we have new sample to write
     if (sample_write < current_sample)
     {
+      // Write data from six channels to the SD card
       for(int k = 0; k < 6; k ++)
       {
          dataFile.print(String(data[sample_write][k]) + space);    
@@ -133,22 +135,21 @@ void timer_stop()
   TBCTL = MC_0;  
 }
 
-// Setup the ADC module to collect data in sequency from analog channel 0, 1, 2, 3, 4, and 12. 
+// Setup the ADC module to collect data in sequency from analog channel 0, 1, 2, 3, 4, and 5. 
 void ADC_setup()
 {
-  ADC12CTL0 = ADC12SHT0_4+ADC12MSC+ADC12ON;// Sampling time, MSC, ADC12 on
-  ADC12CTL1 = ADC12SHS_3+ADC12CONSEQ_1 + ADC12SSEL_0 + ADC12SHP;     // Use sampling timer; ADC12MEM0
+  ADC12CTL0 = ADC12SHT0_4+ADC12MSC+ADC12ON;// Sampling time 64 cycles, MSC, ADC12 on
+  ADC12CTL1 = ADC12SHS_3+ADC12CONSEQ_1 + ADC12SSEL_0 + ADC12SHP;     // Use sampling timer; ADC12MEM0, 5MHz Clock
                                           
-                                            // TBCCR1 output
                                             // Sequence-channel
   ADC12MCTL0 = ADC12SREF_0+ADC12INCH_0;     // V+=AVcc V-=AVss, A0 channel
   ADC12MCTL1 = ADC12SREF_0+ADC12INCH_1;
   ADC12MCTL2 = ADC12SREF_0+ADC12INCH_2;
   ADC12MCTL3 = ADC12SREF_0+ADC12INCH_3;
   ADC12MCTL4 = ADC12SREF_0+ADC12INCH_4;
-  ADC12MCTL5 = ADC12SREF_0+ADC12INCH_12 + ADC12EOS;  // End of channel A12
+  ADC12MCTL5 = ADC12SREF_0+ADC12INCH_5 + ADC12EOS;  // End of channel A5
   
-  ADC12IE = 0x0020;         //enable interrupt
+  ADC12IE = 0x0020;         //enable interrupt on memory 5
   ADC12CTL0 |= ADC12ENC;  
 }
 
@@ -165,10 +166,10 @@ __interrupt void ADC12ISR (void)
   
   ADC12CTL0 &= ~ADC12ENC;
   current_sample++; 
+  
+  // Check to see if all samples have been collected
   if( current_sample < sample_num)
  {
     ADC12CTL0 |= ADC12ENC;
  }
 }
-
-
